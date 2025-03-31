@@ -1,10 +1,6 @@
 import struct
 import os
 
-# ---------------------------------------------------------
-# Clase que representa el registro Alumno.
-# Esta definición es única para ambas estrategias.
-# ---------------------------------------------------------
 class Alumno:
     def __init__(self, codigo, nombre, apellidos, carrera, ciclo, mensualidad):
         self.codigo = codigo
@@ -40,23 +36,23 @@ class MoveTheLast:
                 file.seek(0, os.SEEK_END)
                 if file.tell() == 0:
                     self.initialize_file()
-    
+
     def initialize_file(self):
         with open(self.filename, "wb") as file:
             header = 0  # 0 registros
             file.write(struct.pack("i", header))
-    
+
     def readHeader(self):
         with open(self.filename, "rb") as file:
             file.seek(0)
             header = struct.unpack("i", file.read(HEADER_SIZE))[0]
         return header
-    
+
     def writeHeader(self, value):
         with open(self.filename, "rb+") as file:
             file.seek(0)
             file.write(struct.pack("i", value))
-    
+
     def packAlumno(self, alumno: Alumno):
         return struct.pack(FORMAT_MOVE,
                            alumno.codigo.ljust(5)[:5].encode('utf-8'),
@@ -65,7 +61,7 @@ class MoveTheLast:
                            alumno.carrera.ljust(15)[:15].encode('utf-8'),
                            alumno.ciclo,
                            alumno.mensualidad)
-    
+
     def unpackRecord(self, record):
         if not record:
             return None
@@ -76,7 +72,7 @@ class MoveTheLast:
                       carrera.decode('utf-8').strip(),
                       ciclo,
                       mensualidad)
-    
+
     def add(self, alumno: Alumno):
         header = self.readHeader()
         with open(self.filename, "rb+") as file:
@@ -84,7 +80,7 @@ class MoveTheLast:
             file.seek(HEADER_SIZE + header * RECORD_SIZE_MOVE)
             file.write(self.packAlumno(alumno))
         self.writeHeader(header + 1)
-    
+
     def load(self):
         header = self.readHeader()
         alumnos = []
@@ -97,7 +93,7 @@ class MoveTheLast:
         for alumno in alumnos:
             alumno.print()
         return alumnos
-    
+
     def readRecord(self, pos: int):
         with open(self.filename, "rb") as file:
             file.seek(HEADER_SIZE + pos * RECORD_SIZE_MOVE)
@@ -108,7 +104,7 @@ class MoveTheLast:
             alumno = self.unpackRecord(record)
             alumno.print()
             return alumno
-    
+
     def remove(self, pos: int):
         header = self.readHeader()
         if pos >= header:
@@ -141,23 +137,23 @@ class FreeList:
         self.filename = filename
         if not os.path.exists(self.filename):
             self.initialize_file()
-    
+
     def initialize_file(self):
         with open(self.filename, "wb") as file:
             # Se inicializa el header con -1, lo que indica que no hay espacios libres.
             file.write(struct.pack("i", -1))
-    
+
     def readHeader(self):
         with open(self.filename, "rb") as file:
             file.seek(0)
             header = struct.unpack("i", file.read(HEADER_SIZE))[0]
         return header
-    
+
     def writeHeader(self, value):
         with open(self.filename, "rb+") as file:
             file.seek(0)
             file.write(struct.pack("i", value))
-    
+
     def packAlumno(self, alumno: Alumno, nextDel: int):
         return struct.pack(FORMAT_FREE,
                            alumno.codigo.ljust(5)[:5].encode('utf-8'),
@@ -167,7 +163,7 @@ class FreeList:
                            alumno.ciclo,
                            alumno.mensualidad,
                            nextDel)
-    
+
     def unpackRecord(self, record):
         if not record:
             return None
@@ -179,7 +175,7 @@ class FreeList:
                         ciclo,
                         mensualidad)
         return alumno, nextDel
-    
+
     def add(self, alumno: Alumno):
         header = self.readHeader()
         with open(self.filename, "rb+") as file:
@@ -199,7 +195,7 @@ class FreeList:
                 file.write(self.packAlumno(alumno, -2))
                 # Se actualiza el header para que apunte al siguiente espacio libre.
                 self.writeHeader(nextDel)
-    
+
     def load(self):
         alumnos = []
         with open(self.filename, "rb") as file:
@@ -214,7 +210,7 @@ class FreeList:
         for alumno in alumnos:
             alumno.print()
         return alumnos
-    
+
     def readRecord(self, pos: int):
         with open(self.filename, "rb") as file:
             file.seek(HEADER_SIZE + pos * RECORD_SIZE_FREE)
@@ -228,7 +224,7 @@ class FreeList:
                 return None
             alumno.print()
             return alumno
-    
+
     def remove(self, pos: int):
         header = self.readHeader()
         with open(self.filename, "rb+") as file:
@@ -241,50 +237,110 @@ class FreeList:
 
 
 # ---------------------------------------------------------
-# Bloque de pruebas funcionales para ambas estrategias.
+# Funciones de test para mejorar la verificación de cada operación
 # ---------------------------------------------------------
-if __name__ == "__main__":
-    # Datos de ejemplo
+def print_records(records):
+    for i, alumno in enumerate(records):
+        print(f"Pos {i}: {alumno}")
+
+def test_move_the_last():
+    print("=== TEST: MOVE_THE_LAST ===")
+    filename_move = "data_move.dat"
+    if os.path.exists(filename_move):
+        os.remove(filename_move)
+    
+    db_move = MoveTheLast(filename_move)
+    
+    # Agregar registros
+    print("\nAgregando registros A, B, C:")
     a = Alumno("P-123", "Eduardo", "Aragon", "CS", 5, 500)
     b = Alumno("P-124", "Jorge", "Quenta", "DS", 5, 2000)
     c = Alumno("P-125", "Jose", "Quenta", "DS", 5, 2000)
-    d = Alumno("P-126", "Maria", "Quenta", "CS", 5, 2000)
-
-    # ---------------------------
-    # Pruebas con estrategia MOVE_THE_LAST
-    # ---------------------------
-    print("=== Estrategia MOVE_THE_LAST ===")
-    filename_move = "data_move.dat"
-    # Limpiar archivo previo si existe
-    if os.path.exists(filename_move):
-        os.remove(filename_move)
-    db_move = MoveTheLast(filename_move)
     db_move.add(a)
     db_move.add(b)
     db_move.add(c)
-    print("Registros después de agregar:")
-    db_move.load()
-    print("Leer registro en posición 1:")
-    db_move.readRecord(1)
+    
+    print("\nRegistros después de agregar:")
+    records = db_move.load()
+    print_records(records)
+    
+    # Leer un registro
+    print("\nLeyendo registro en posición 1:")
+    rec = db_move.readRecord(1)
+    if rec:
+        print("Registro leído:", rec)
+    
+    # Eliminar registro en posición 1
+    print("\nEliminando registro en posición 1...")
     db_move.remove(1)
-    print("Después de eliminar registro en posición 1:")
-    db_move.load()
+    
+    print("\nRegistros después de eliminar en posición 1:")
+    records = db_move.load()
+    print_records(records)
+    
+    # Intentar leer el registro que fue eliminado
+    print("\nIntentando leer el registro en la posición 1 (después de eliminación):")
+    rec = db_move.readRecord(1)
+    if rec is None:
+        print("El registro fue eliminado correctamente.")
+    
+    # Probar eliminar en posición fuera de rango
+    print("\nIntentando eliminar registro en posición 5 (fuera de rango):")
+    db_move.remove(5)
+    print("Test MOVE_THE_LAST completado.\n")
 
-    # ---------------------------
-    # Pruebas con estrategia FREE_LIST
-    # ---------------------------
-    print("\n=== Estrategia FREE_LIST ===")
+def test_free_list():
+    print("=== TEST: FREE_LIST ===")
     filename_free = "data_free.dat"
     if os.path.exists(filename_free):
         os.remove(filename_free)
+    
     db_free = FreeList(filename_free)
+    
+    # Agregar registros
+    print("\nAgregando registros A, B, C:")
+    a = Alumno("P-123", "Eduardo", "Aragon", "CS", 5, 500)
+    b = Alumno("P-124", "Jorge", "Quenta", "DS", 5, 2000)
+    c = Alumno("P-125", "Jose", "Quenta", "DS", 5, 2000)
     db_free.add(a)
     db_free.add(b)
     db_free.add(c)
-    print("Registros después de agregar:")
-    db_free.load()
-    print("Leer registro en posición 1:")
-    db_free.readRecord(1)
+    
+    print("\nRegistros después de agregar:")
+    records = db_free.load()
+    print_records(records)
+    
+    # Leer registro en posición 1
+    print("\nLeyendo registro en posición 1:")
+    rec = db_free.readRecord(1)
+    if rec:
+        print("Registro leído:", rec)
+    
+    # Eliminar registro en posición 1
+    print("\nEliminando registro en posición 1...")
     db_free.remove(1)
-    print("Después de eliminar registro en posición 1:")
-    db_free.load()
+    
+    print("\nRegistros después de eliminar en posición 1:")
+    records = db_free.load()
+    print_records(records)
+    
+    # Intentar leer el registro eliminado
+    print("\nIntentando leer el registro en posición 1 (debe indicar eliminado):")
+    rec = db_free.readRecord(1)
+    if rec is None:
+        print("Confirmado: el registro en posición 1 ha sido eliminado.")
+    
+    # Agregar un nuevo registro para reutilizar el espacio libre
+    print("\nAgregando un nuevo registro D para reutilizar el espacio libre:")
+    d = Alumno("P-126", "Maria", "Quenta", "CS", 5, 2000)
+    db_free.add(d)
+    
+    print("\nRegistros después de agregar nuevo registro en espacio libre:")
+    records = db_free.load()
+    print_records(records)
+    
+    print("Test FREE_LIST completado.\n")
+
+if __name__ == "__main__":
+    test_move_the_last()
+    test_free_list()
