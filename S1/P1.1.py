@@ -22,11 +22,12 @@ class MoveTheLast:
 	def __init__(self, filename):
 		self.filename = filename
 		if not os.path.exists(self.filename):
-			self.initialize_file(filename)
+			self.initialize_file(filename) # if archive not exists
 		else:
 			with open(filename, "rb+") as file:
+				file.seek(0,2)
 				if(file.tell() == 0):
-					self.initialize_file(filename)
+					self.initialize_file(filename) # if archive is empty
 			
 	def initialize_file(self, filename):
 		with open(filename, "wb") as file:
@@ -51,29 +52,29 @@ class MoveTheLast:
 	
 	def load(self):
 		header = self.readHeader()
-		print(header)
 		alumnos = []
 		with open(self.filename, "rb") as file:
-			for _ in range(header):
+			file.seek(HEADER_SIZE)
+			for _ in range(header): # loop for all lines to header
 				record = file.read(RECORD_SIZE)
-				print(record)
 				alumnos.append(self.unpackRecord(record))
 		for alumno in alumnos:
 			alumno.print()
 		return alumnos
+
 	
 	def add(self, alumno:Alumno):
 		header = self.readHeader()
 		with open(self.filename, "rb+") as file:
-			file.seek(HEADER_SIZE + header * RECORD_SIZE)
+			file.seek(HEADER_SIZE + header * RECORD_SIZE) # pointer at the end
 			file.write(self.packAlumno(alumno))
 			file.seek(0)
-			file.write(struct.pack("i", header + 1))
+			file.write(struct.pack("i", header + 1)) # actualize header + 1
 	
 	def readRecord(self, pos:int):
 		alumno = ""
 		with open(self.filename, "rb") as file:
-			file.seek(HEADER_SIZE + pos * RECORD_SIZE)
+			file.seek(HEADER_SIZE + pos * RECORD_SIZE) # pointer at line pos
 			record = file.read(RECORD_SIZE)
 			alumno = self.unpackRecord(record)
 		if not alumno:
@@ -85,12 +86,15 @@ class MoveTheLast:
 	def remove(self, pos:int):
 		header = self.readHeader()
 		with open(self.filename, "rb+") as file:
-			file.seek(HEADER_SIZE + header * RECORD_SIZE)
-			record = file.read(HEADER_SIZE)
-			file.seek(HEADER_SIZE + pos * RECORD_SIZE)
-			file.write(record)
-			file.seek(0)
-			file.write(struct.pack("i", header - 1))
+			if pos > header:
+				print("No record in position:", pos)
+			else:
+				file.seek(HEADER_SIZE + (header - 1) * RECORD_SIZE) # pointer before the end line
+				record = file.read(RECORD_SIZE)
+				file.seek(HEADER_SIZE + pos * RECORD_SIZE)
+				file.write(record)
+				file.seek(0)
+				file.write(struct.pack("i", header - 1)) # actualize header - 1
 
 f = MoveTheLast("data.dat")
 a = Alumno("P-123", "Eduardo", "Aragon", "CS", 5, 500)
@@ -98,11 +102,17 @@ b = Alumno("P-124", "Jorge", "Quenta", "DS", 5, 2000)
 c = Alumno("P-125", "Jose", "Quenta", "DS", 5, 2000)
 d = Alumno("P-126", "Maria", "Quenta", "CS", 5, 2000)
 
-f.add(a)
-f.add(b)
-f.add(c)
-f.load()
-#f.readRecord(1)
+def func():
+	f.add(a)
+	f.add(b)
+	f.add(c)
+	f.load()
+	print()
+	f.readRecord(1)
 
+#func()
 #f.remove(1)
+#f.load()
+#f.add(d)
 #f.readRecord(1)
+f.load()
