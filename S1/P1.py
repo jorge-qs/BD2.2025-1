@@ -33,7 +33,7 @@ class MoveTheLast:
             self.initialize_file()
         else:
             with open(self.filename, "rb+") as file:
-                file.seek(0, os.SEEK_END)
+                file.seek(0, 2)
                 if file.tell() == 0:
                     self.initialize_file()
 
@@ -181,7 +181,7 @@ class FreeList:
         with open(self.filename, "rb+") as file:
             if header == -1:
                 # No hay espacios libres: se añade al final del archivo.
-                file.seek(0, os.SEEK_END)
+                file.seek(0, 2)
                 file.write(self.packAlumno(alumno, -2))  # -2 indica que el registro está activo.
             else:
                 # Hay un espacio libre: se reutiliza ese registro.
