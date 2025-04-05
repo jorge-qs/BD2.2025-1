@@ -19,7 +19,7 @@ class Alumno:
 
 
 # Constantes para MOVE_THE_LAST
-FORMAT = '5s11s20s15sii'     # 5s: código, 11s: nombre, 20s: apellidos, 15s: carrera, i: ciclo, i: mensualidad
+FORMAT = '5s11s20s15sif'     # 5s: código, 11s: nombre, 20s: apellidos, 15s: carrera, i: ciclo, f: mensualidad
 RECORD_SIZE = struct.calcsize(FORMAT)
 HEADER_SIZE = 4  # Se usan 4 bytes para el header (número de registros)
 
