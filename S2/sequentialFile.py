@@ -51,7 +51,7 @@ class SequentialFile:
 
     def _initialize_file(self):
         with open(self.filename, "wb") as file:
-            file.write(struct.pack("ii", -1, 0))
+            file.write(struct.pack("ii", -1, 1))
 
     def _initialize_auxfile(self):
         with open(self.auxfile, "wb") as file:
@@ -63,7 +63,7 @@ class SequentialFile:
             return [next, archive]
     
     def _binarySearchInFile(self, id):
-        # binary search for find the rightest record less than id
+        # binary search for find the rightest record less or equal than id
         beg = 0
         end = getNumberRecordsFile(self.filename) - 1
         res = -1
@@ -71,6 +71,21 @@ class SequentialFile:
             mid = (beg + end)//2
             cur_mid:Venta = readRecordFromFile(self.filename, HEADER_SIZE + mid * RECORD_SIZE)
             if(cur_mid.id <= id):
+                res = mid
+                beg = mid + 1
+            else:
+                end = mid - 1
+        return res
+    
+    def _binaryRemoveInFile(self, id):
+        # binary search for find the rightest record less than id
+        beg = 0
+        end = getNumberRecordsFile(self.filename) - 1
+        res = -1
+        while(beg <= end):
+            mid = (beg + end)//2
+            cur_mid:Venta = readRecordFromFile(self.filename, HEADER_SIZE + mid * RECORD_SIZE)
+            if(cur_mid.id < id):
                 res = mid
                 beg = mid + 1
             else:
@@ -119,13 +134,20 @@ class SequentialFile:
         if(res == -1):
             # file is empty
             [venta.next, venta.archive] = self._read_header_file()
+            if(venta.next != -1):
+                [filename, header] = self._getArchiveInfo(venta.archive)
+                firstRecord = readRecordFromFile(filename, header + venta.next * RECORD_SIZE)
+                if(firstRecord.id == venta.id):
+                    print(f"new record with id: {venta.id} is already in auxfile and is the firstone")
+                    return
+            
+            print(f"writing new record with id: {venta.id} in auxfile")
             with open(self.filename, "rb+") as file:
                 file.seek(0)
                 file.write(struct.pack("ii", numAux, 1))
             
             with open(self.auxfile, "rb+") as file:
                 file.seek(0,2)
-                venta.print()
                 file.write(venta.pack())
         else:
             record:Venta = readRecordFromFile(self.filename, HEADER_SIZE + res * RECORD_SIZE)
@@ -145,7 +167,6 @@ class SequentialFile:
                 print(f"found record with id: {record.id} in principal file at position: {pointer_record}")
                 with open(self.filename, "rb+") as file:
                     file.seek(HEADER_SIZE + pointer_record * RECORD_SIZE)
-                    record.print()
                     file.write(record.pack()) # write record with new next pointer on filename
 
                 with open(self.auxfile, "rb+") as file:
@@ -177,6 +198,7 @@ class SequentialFile:
                 cur_record.next = numAux # posicion del ultimo ingresado
                 cur_record.archive = 1
 
+                print(f"writing new record with id: {venta.id} in auxfile")
                 with open(self.auxfile, "rb+") as file:
                     file.seek(0,2)
                     file.write(venta.pack()) # write venta on auxfile
@@ -198,6 +220,9 @@ class SequentialFile:
         if (res == -1):
             [next, archive] = self._read_header_file()
             assert(archive == 1)
+            if(next == -1):
+                print("auxfile is empty, record not found")
+                return
             record:Venta = readRecordFromFile(self.auxfile, next * RECORD_SIZE)
             if(record.id == key):
                 print(f"RECORD FOUND in aux file with Id: {key}")
@@ -222,28 +247,100 @@ class SequentialFile:
         
         print(f"record with id: {key} not found")
     
-"""    def remove(self, key:str):
-        res = self._binarySearchInFile(key)
+    def remove(self, key:str):
+        res = self._binaryRemoveInFile(key)
+        res_archive = 0
         if (res == -1):
             [next, archive] = self._read_header_file()
             assert(archive == 1)
-            record:Venta = readRecordFromFile(self.auxfile, next * RECORD_SIZE)
+            if(next == -1):
+                print("auxfile is empty, record not found")
+                return
+            [filename, header] = self._getArchiveInfo(archive)
+            record:Venta = readRecordFromFile(filename, header + next * RECORD_SIZE)
             if(record.id == key):
-                print(f"RECORD FOUND in aux file with Id: {key}")
-                record.print()
-                return record
-        else: 
-            record:Venta = readRecordFromFile(self.filename, HEADER_SIZE + res * RECORD_SIZE)
-            if(record.id == key):
-                print(f"RECORD FOUND in principal file with Id: {key}")
-                record.print()
-                return record
+                print(f"record with id: {record.id} was found on auxfile")
+                with open(self.filename, "rb+") as file:
+                    file.seek(0)
+                    print(f"rewriting header with new next pointer: {record.next}")
+                    file.write(struct.pack("ii", record.next, record.archive))
+                
+                with open(self.auxfile, "rb+") as file:
+                    file.seek(res * RECORD_SIZE)
+                    record.next = -2
+                    print(f"deleting record with id: {record.id}")
+                    file.write(record.pack())
+                    return
+            res = next
+            res_archive = archive
+
+        assert(res != -1)
+        [filename_ini, header_ini] = self._getArchiveInfo(res_archive)
+        record:Venta = readRecordFromFile(filename_ini, header_ini + res * RECORD_SIZE)
+        next = record.next
+        archive = record.archive
+        if(archive == 0):
+            next_record = readRecordFromFile(self.filename, HEADER_SIZE + next *RECORD_SIZE)
+            if(next_record.id == key):
+                print(f"record with id: {next_record.id} was found on principal file")
+                with open(self.filename, "rb+") as file:
+                    file.seek(HEADER_SIZE + record.next * RECORD_SIZE)
+                    print(f"deleting record with id: {next_record.id}")
+                    record.next = next_record.next
+                    next_record.next = -2
+                    file.write(next_record.pack())
+
+                with open(filename_ini, "rb+") as file:
+                    file.seek(header_ini + res * RECORD_SIZE)
+                    print(f"rewriting record before with id: {record.next} to new next pointer: {record.next}")
+                    record.archive = next_record.archive
+                    file.write(record.pack())
+            else:
+                print(f"record with id: {key} wasn't found")
+            return
+
+        cur_pointer = res
+        cur_archive = 0
+        while(next != -1):
+            [filename, header] = self._getArchiveInfo(archive)
+            next_record = readRecordFromFile(filename, header + next * RECORD_SIZE)
+            if(next_record.id > key):
+                print(f"record with id: {key} wasn't found")
+                return
+            if(next_record.id == key):
+                print(f"record with id: {next_record.id} was found on file: {archive}")
+                break
+            cur_pointer = next 
+            cur_archive = archive
+            next = next_record.next
+            archive = next_record.archive
+        
+        if(next == -1):
+            print(f"getting at the last part of file, record with id: {key} wasn't found")
+            return
+        
+        [filename, header] = self._getArchiveInfo(cur_archive)
+        cur_record = readRecordFromFile(filename, header + cur_pointer * RECORD_SIZE)
+        [next_filename, next_header] = self._getArchiveInfo(cur_record.archive)
+        next_record = readRecordFromFile(next_filename, next_header + cur_record.next * RECORD_SIZE)
+
+        assert(next_record.id == key)
+        with open(next_filename, "rb+") as file:
+            file.seek(next_header + cur_record.next * RECORD_SIZE)
+            cur_record.next = next_record.next
+            next_record.next = -2
+            print(f"deleting record with id: {next_record.id}")
+            file.write(next_record.pack())
+
+        cur_record.archive = next_record.archive
+        with open(filename, "rb+") as file:
+            file.seek(header + cur_pointer * RECORD_SIZE)
+            print(f"rewriting record before with id: {cur_record.id} to new next pointer: {cur_record.next}")
+            file.write(cur_record.pack())
+            
+
     
-   """ 
 
-
-
-    
 
 
 f = SequentialFile("data.dat", "aux.dat")
@@ -254,6 +351,9 @@ a4 = Venta(4, "Manzana4", 3, 2.5, "05-04-2025")
 a5 = Venta(5, "Manzana5", 3, 2.5, "05-04-2025")
 a6 = Venta(6, "Manzana6", 3, 2.5, "05-04-2025")
 a7 = Venta(7, "Manzana7", 3, 2.5, "05-04-2025")
+
+
+
 
 def pruebaInsert1():
     f.insert(a1)
@@ -307,6 +407,48 @@ def pruebaSearch4():
     f.insert(a6)
     f.insert(a4)
     f.insert(a1)
+    f.search(7)
+
+def pruebaSearch5():
+    f.search(1)
+    f.insert(a1)
+    f.insert(a2)
     f.search(1)
 
-pruebaSearch4()
+def pruebaRemove1():
+    f.insert(a1)
+    f.insert(a2)
+    f.insert(a3)
+    f.insert(a4)
+    f.remove(2)
+
+
+def pruebaRemove2():
+    f.insert(a1)
+    f.insert(a2)
+    f.insert(a3)
+    f.insert(a4)
+    f.insert(a5)
+    f.insert(a6)
+    f.remove(5)
+    f.remove(6)
+
+def pruebaRemove3():
+    f.insert(a2)
+    f.insert(a3)
+    f.insert(a5)
+    f.insert(a6)
+    f.insert(a4)
+    f.insert(a1)
+    f.remove(4)
+
+def pruebaRemove4():
+    f.insert(a2)
+    f.insert(a3)
+    f.insert(a5)
+    f.insert(a6)
+    f.insert(a4)
+    f.insert(a1)
+    f.remove(2)
+
+pruebaRemove4()
