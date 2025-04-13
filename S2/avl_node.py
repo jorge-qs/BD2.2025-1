@@ -272,7 +272,7 @@ def test_avl_insertion():
     print("Prueba de inserción:")
     file_name = "avl_test.dat"
 
-  if os.path.exists(file_name):
+    if os.path.exists(file_name):
         os.remove(file_name)
     avl = AVLArchivo(file_name)
     
