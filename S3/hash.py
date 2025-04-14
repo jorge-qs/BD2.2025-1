@@ -4,19 +4,19 @@ import os
 fb = 4
 M = 3
 
-class Record():
+class Bucket():
 	FORMAT = "i" * (fb + 2)
-	RECORD_SIZE = struct.calcsize(FORMAT)
+	BUCKET_SIZE = struct.calcsize(FORMAT)
 	def __init__(self, ar = [-1 for i in range(fb)], next = -1, cant = 0):
 		self.ar = ar
 		self.next = next
 		self.cant = cant
 	
 	def pack(self) -> bytes:
-		# packing record
+		# packing bucket
 		return 
-	def unpack(self, record:bytes):
-		# unpacking record
+	def unpack(self, bucket:bytes):
+		# unpacking bucket
 		return
 	
 class StaticHash():
@@ -31,23 +31,23 @@ class StaticHash():
 		header = 6
 		self.put_header(header)
 		for i in range(header):
-			self.patch(i, Record())
+			self.patch(i, Bucket())
 	
-	def get(self, pos) -> Record | None:
-		# reading record at position pos
-		return Record()
+	def get(self, pos) -> Bucket | None:
+		# reading bucket at position pos
+		return Bucket()
 	
-	def post(self, data: Record) -> int:
+	def post(self, data: Bucket) -> int:
 		# writing at the end of file
-		# return position of the record
+		# return position of the bucket
 		return 0
 	
 	def getAux(self, pos: int, filename: str):
-		# reading record at position pos in filename
+		# reading bucket at position pos in filename
 		return 0
 	
-	def patch(self, pos, data: Record) -> None:
-		# writing record at position pos
+	def patch(self, pos, data: Bucket) -> None:
+		# writing bucket at position pos
 		return None
 
 	def put_header(self, header):
@@ -55,10 +55,10 @@ class StaticHash():
 		return None
 		
 	def getLastPosition(self, header):
-		record = Record()
+		bucket = Bucket()
 		with open(self.filename, "rb") as file:
 			file.seek(0,2)
-			return file.tell() // record.RECORD_SIZE
+			return file.tell() // bucket.bucket_SIZE
 		return -1
 	
 	def get_header(self):
@@ -66,27 +66,27 @@ class StaticHash():
 		return self.mod
 
 	def insertAux(self, pos, id):
-		record = self.get(pos)
-		if(record.cant < fb):
+		bucket = self.get(pos)
+		if(bucket.cant < fb):
 			ite = 0
-			while(record.ar[ite] != -1):
+			while(bucket.ar[ite] != -1):
 				#searching position for id
 				ite+=1
-				assert(ite < len(record.ar)) # shouldn't pass lenght
-			record.ar[ite] = id
-			record.cant += 1
+				assert(ite < len(bucket.ar)) # shouldn't pass lenght
+			bucket.ar[ite] = id
+			bucket.cant += 1
 		else:
-			if(record.next != -1):
-				self.insertAux(record.next, id)
+			if(bucket.next != -1):
+				self.insertAux(bucket.next, id)
 			else:
-				new_record = Record()
-				new_record[0] = id
-				new_record.cant = 1 # inserting id on new_record
+				new_bucket = Bucket()
+				new_bucket[0] = id
+				new_bucket.cant = 1 # inserting id on new_bucket
 
-				next = self.post(new_record) # adding new record at the end of file
+				next = self.post(new_bucket) # adding new bucket at the end of file
 
-				record.next = next
-				self.patch(pos, record) # rewriting with new next pointer
+				bucket.next = next
+				self.patch(pos, bucket) # rewriting with new next pointer
 
 
 	def insert(self, id):
@@ -95,63 +95,63 @@ class StaticHash():
 			self.reHashing()
 	
 	def seachAux(self, pos, id) -> int:
-		record = self.get(pos)
-		for i in record.ar:
+		bucket = self.get(pos)
+		for i in bucket.ar:
 			if(i == id):
 				# return all register with id
 				return id
-		if(record.next == -1):
+		if(bucket.next == -1):
 			# id not found
 			return None
-		return self.searchAux(self, record.next, id)
+		return self.searchAux(self, bucket.next, id)
 	
 	def search(self, id):
 		return self.searchAux(id % self.mod, id)
 	
-	def deleteAux(self, bef, pos, id) -> list[2]: # return before position at current position of record in file
-		record = self.get(pos)
-		for i in range(record.ar): # searching over all record
-			if(record.ar[i] == id):
-				# deleting record
-				record.ar[i] = -1
-				record.cant -= 1
+	def deleteAux(self, bef, pos, id) -> list[2]: # return before position at current position of bucket in file
+		bucket = self.get(pos)
+		for i in range(bucket.ar): # searching over all bucket
+			if(bucket.ar[i] == id):
+				# deleting bucket
+				bucket.ar[i] = -1
+				bucket.cant -= 1
 				return [bef, pos]
-		if(record.next == -1):
+		if(bucket.next == -1):
 			return [-1, -1]
-		return self.deleteAux(self, pos, record.next, id)
+		return self.deleteAux(self, pos, bucket.next, id)
 	
 	def getLastPointer(self, pos) -> int: # get last pointer following the next pointers
-		record = self.get(pos)
-		if(record.next == -1):
+		bucket = self.get(pos)
+		if(bucket.next == -1):
 			return pos
-		return self.getLastPointer(record.next)
+		return self.getLastPointer(bucket.next)
 	
 	def getDepth(self, pos) -> int: # number of buckets with overflows
-		record = self.get(pos)
-		if(record.next == -1):
+		bucket = self.get(pos)
+		if(bucket.next == -1):
 			return 1
-		return self.getDepth(record.next) + 1
+		return self.getDepth(bucket.next) + 1
 
 	def delete(self, id):
 		[bef, cur] = self.deleteAux(-1, id % self.mod, id)
 		if(bef == -1):
 			return
-		record_bef = self.get(bef)
-		record_cur = self.get(cur)
-		if(record_cur.cant != 0):
+		bucket_bef = self.get(bef)
+		bucket_cur = self.get(cur)
+		if(bucket_cur.cant != 0):
 			return
-		# if is empty, nex pointer of bef is the next of cur (skipping record)
-		record_bef.next = record_cur.next
-		self.patch(bef, record_bef)
+		# if is empty, nex pointer of bef is the next of cur (skipping bucket)
+		bucket_bef.next = bucket_cur.next
+		self.patch(bef, bucket_bef)
 		last_position = self.getLastPointer(id % self.mod)
 		
-		# append this empty record to the last record
-		last_record = self.get(last_position)
-		last_record.next = cur
-		self.patch(last_position, last_record)
+		# append this empty bucket to the last bucket
+		last_bucket = self.get(last_position)
+		last_bucket.next = cur
+		self.patch(last_position, last_bucket)
 
-		record_cur.next = -1 # now this is the last
-		self.patch(cur, record_cur)
+		bucket_cur.next = -1 # now this is the last
+		self.patch(cur, bucket_cur)
 
 		if(self.getDepth(id % self.mod) > M):
 			print("depth should't pass")
@@ -163,12 +163,12 @@ class StaticHash():
 		self.mod = 2 * self.mod # duplicating mod
 		self.put_header(self.mod)
 		for i in range(self.mod):
-			self.post(Record()) # initializing filename again
+			self.post(Bucket()) # initializing filename again
 
 		for i in range(self.getLastPosition()):
-			record:Record = self.getAux(i, old_filename)
-			assert(record != None)
-			for j in record.ar:
+			bucket:Bucket = self.getAux(i, old_filename)
+			assert(bucket != None)
+			for j in bucket.ar:
 				self.insert(j % self.mod, j)
 
 		os.remove(old_filename)		
