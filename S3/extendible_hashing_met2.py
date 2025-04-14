@@ -1,3 +1,5 @@
+import os
+import pickle
 
 GLOBAL_DEPTH = 8       
 BUCKET_CAPACITY = 3    
@@ -5,20 +7,19 @@ BUCKET_CAPACITY = 3
 def hash_function(key: int) -> int:
     return key
 
-def get_binary_key(key: int, d: int) -> str:
 
+def get_binary_key(key: int, d: int) -> str:
     h = hash_function(key)
-    # Representación binaria con al menos 'd' bits
-    return format(h, 'b').zfill(d)[-d:]  # si 'h' sobrepasa d bits, se toman los d bits menos significativos
+    return format(h, 'b').zfill(d)[-d:]
+
 
 
 class Bucket:
-  
     def __init__(self, local_depth: int, capacity: int):
         self.local_depth = local_depth
         self.capacity = capacity
-        self.records = []
-        self.overflow = None   # Bucket de overflow (si fuese necesario)
+        self.records = []      
+        self.overflow = None   
 
     def is_full(self) -> bool:
         return len(self.records) >= self.capacity
@@ -29,7 +30,6 @@ class Bucket:
     def search(self, key: int) -> bool:
         if key in self.records:
             return True
-        # Si no está, buscar en el overflow si existe
         if self.overflow:
             return self.overflow.search(key)
         return False
@@ -38,7 +38,6 @@ class Bucket:
         if key in self.records:
             self.records.remove(key)
             return True
-        # Buscar en overflow
         if self.overflow:
             return self.overflow.delete(key)
         return False
@@ -53,147 +52,134 @@ class Bucket:
         self.records = []
         self.overflow = None
 
+    def __repr__(self):
+        return f"Bucket(ld={self.local_depth}, recs={self.records}, overflow={self.overflow is not None})"
+
+
 class Node:
-    """
-    Representa un nodo en el árbol digital (trie de bits).
-    Puede ser:
-      - Nodo interno (is_leaf = False): 
-          * left_child (Node)
-          * right_child (Node)
-      - Nodo hoja (is_leaf = True):
-          * bucket (Bucket)
-    """
+
     def __init__(self, is_leaf: bool = True, bucket: Bucket = None):
         self.is_leaf = is_leaf
         self.bucket = bucket          # Sólo se usa si es hoja
-        self.left_child = None        # Nodo hijo al tomar bit = 0
-        self.right_child = None       # Nodo hijo al tomar bit = 1
+        self.left_child = None        # Nodo hijo para bit '0'
+        self.right_child = None       # Nodo hijo para bit '1'
+
+    def __repr__(self):
+        if self.is_leaf:
+            return f"Leaf({self.bucket})"
+        else:
+            return f"Internal(Left={self.left_child}, Right={self.right_child})"
+
 
 
 class ExtendibleHashTree:
-    def __init__(self, global_depth: int, bucket_capacity: int):
-        self.global_depth = global_depth
-        self.bucket_capacity = bucket_capacity
+    def __init__(self, global_depth: int, bucket_capacity: int, filename: str):
+        self.filename = filename
+        # Si existe el archivo, cargar la estructura persistida
+        if os.path.exists(self.filename):
+            loaded_tree = ExtendibleHashTree.load_tree(self.filename)
+            self.__dict__.update(loaded_tree.__dict__)
+        else:
+            self.global_depth = global_depth
+            self.bucket_capacity = bucket_capacity
+            # Inicializamos la raíz como nodo interno que apunta a dos nodos hoja
+            self.root = Node(is_leaf=False)
+            bucket0 = Bucket(local_depth=1, capacity=bucket_capacity)
+            bucket1 = Bucket(local_depth=1, capacity=bucket_capacity)
+            self.root.left_child = Node(is_leaf=True, bucket=bucket0)   # Prefijo "0"
+            self.root.right_child = Node(is_leaf=True, bucket=bucket1)  # Prefijo "1"
+            self.save()
 
-        # Creamos la raíz del árbol como un nodo interno 
-        # que tendrá 2 hijos (0,1) equivalentes a los 2 buckets iniciales.
-        self.root = Node(is_leaf=False)
+    @staticmethod
+    def load_tree(filename: str):
+        with open(filename, "rb") as f:
+            return pickle.load(f)
 
-        # Cada hijo es un nodo hoja con su bucket
-        bucket0 = Bucket(local_depth=1, capacity=bucket_capacity)
-        bucket1 = Bucket(local_depth=1, capacity=bucket_capacity)
+    def save(self):
+        with open(self.filename, "wb") as f:
+            pickle.dump(self, f)
 
-        self.root.left_child = Node(is_leaf=True, bucket=bucket0)   # Sufijo "0"
-        self.root.right_child = Node(is_leaf=True, bucket=bucket1)  # Sufijo "1"
-
-    # -------------------------------------------------------------------------
-    # Función auxiliar para recorrer el árbol digital (trie) según los bits de la key.
-    # Retorna el nodo hoja donde se debería insertar/buscar/eliminar.
-    # -------------------------------------------------------------------------
+    # Función auxiliar para descender en el árbol según los bits de la clave.
     def descend_tree(self, bits: str, idx: int, node: Node) -> Node:
-        # Caso base: si node es hoja o si ya hemos consumido todos los bits
+        # Caso base: si el nodo es hoja o ya se han consumido todos los bits
         if node.is_leaf or idx >= len(bits):
             return node
-        
-        # bit actual
         bit = bits[idx]
         if bit == '0':
             return self.descend_tree(bits, idx + 1, node.left_child)
-        else:  # bit == '1'
+        else:
             return self.descend_tree(bits, idx + 1, node.right_child)
 
-
+    # Inserta una clave en el árbol
     def insert(self, key: int) -> None:
-        bits = get_binary_key(key, self.global_depth)  
-        # Descender en el árbol para encontrar el nodo hoja correspondiente
+        bits = get_binary_key(key, self.global_depth)
         leaf_node = self.descend_tree(bits, 0, self.root)
         bucket = leaf_node.bucket
-        
-        # Verificar si el bucket tiene espacio
+
         if not bucket.is_full():
             bucket.insert(key)
+            self.save()
         else:
-            # El bucket está lleno; ver si podemos dividir (split) o si aplicamos overflow
+            # Si el bucket está lleno, decidir entre hacer split o usar overflow
             if bucket.local_depth < self.global_depth:
                 self.split_leaf(leaf_node, bits)
-                # Tras el split, reintentar la inserción
+                # Después del split, se reintenta la inserción
                 self.insert(key)
             else:
-                # Profundidad local == profundidad global: encadenar overflow
+                # Cuando la profundidad local es igual a la global, se aplica overflow
                 self.handle_overflow(bucket, key)
+                self.save()
 
-
+    # Manejo del overflow: se encadena un bucket de overflow si es necesario
     def handle_overflow(self, bucket: Bucket, key: int) -> None:
         current = bucket
         while current.is_full():
             if current.overflow is None:
-                # Crear un bucket de overflow con la misma profundidad local
                 new_bucket = Bucket(local_depth=bucket.local_depth, capacity=bucket.capacity)
                 current.overflow = new_bucket
             current = current.overflow
         current.insert(key)
 
-    # -------------------------------------------------------------------------
-    # Split de un nodo hoja:
-    #  1. Creamos un nodo interno en lugar del nodo hoja actual.
-    #  2. Creamos 2 hojas hijas (bucket0 y bucket1) con local_depth = old_local_depth + 1.
-    #  3. Redistribuimos los registros del bucket original (y su overflow) en los 2 nuevos buckets.
-    #  4. Reemplazamos el nodo hoja en el árbol con el nodo interno.
-    # -------------------------------------------------------------------------
+    # División (split) de un nodo hoja que está lleno
     def split_leaf(self, leaf_node: Node, bits: str) -> None:
         old_bucket = leaf_node.bucket
         old_depth = old_bucket.local_depth
         new_depth = old_depth + 1
 
-        # Crear un nodo interno para reemplazar la hoja actual
+        # Crear un nodo interno para reemplazar el nodo hoja actual
         internal_node = Node(is_leaf=False)
 
-        # Crear los 2 nuevos buckets
+        # Crear dos nuevos buckets con profundidad incrementada
         bucket0 = Bucket(local_depth=new_depth, capacity=old_bucket.capacity)
         bucket1 = Bucket(local_depth=new_depth, capacity=old_bucket.capacity)
 
-        # Crear nodos hoja que apuntan a los nuevos buckets
+        # Crear nodos hoja que contienen los nuevos buckets
         leaf0 = Node(is_leaf=True, bucket=bucket0)
         leaf1 = Node(is_leaf=True, bucket=bucket1)
 
         internal_node.left_child = leaf0
         internal_node.right_child = leaf1
 
-        # Obtener todos los registros en el bucket original (incluyendo overflow)
+        # Obtener todas las claves del bucket original (incluyendo overflow)
         all_keys = old_bucket.all_records()
-
-        # Vaciar el bucket original
         old_bucket.clear()
 
-        # Reasignar cada registro a uno de los 2 nuevos buckets,
-        # basándonos en los (new_depth) bits de la key
+        # Reasignar cada clave a uno de los nuevos buckets según el bit que corresponda
         for k in all_keys:
             bstr = get_binary_key(k, self.global_depth)
-            # Tomamos los primeros new_depth bits (o la porción que se use) 
-            # para decidir 0 o 1. Decidimos leer bit por bit
-            # de izquierda a derecha y comparamos con la profundidad local.
-            # Aquí, para mayor simplicidad, usaremos el bit (old_depth) de bstr:
-            bit_position = old_depth  # bit que define a 0 o 1 en este split
-            if bit_position < len(bstr):
-                if bstr[bit_position] == '0':
-                    bucket0.insert(k)
-                else:
-                    bucket1.insert(k)
-            else:
-                # Si no hay más bits, por convención lo enviamos a bucket0
+            # Usamos el bit en la posición old_depth para decidir a qué bucket asignar
+            if old_depth < len(bstr) and bstr[old_depth] == '0':
                 bucket0.insert(k)
+            else:
+                bucket1.insert(k)
 
-        # Reemplazar el leaf_node con el nuevo nodo interno en el árbol
-        # Como estamos en pseudocódigo, supondremos que 'leaf_node' está refereciado
-        # directamente y podemos copiar los atributos del internal_node.
+        # Reemplazar la hoja actual con el nuevo nodo interno (se copia la estructura)
         leaf_node.is_leaf = False
         leaf_node.bucket = None
         leaf_node.left_child = internal_node.left_child
         leaf_node.right_child = internal_node.right_child
 
-        # Ajustar la profundidad local del nodo ya no aplica, 
-        # pues ahora es nodo interno y no mantiene 'local_depth'.
-
+        self.save()
 
     def search(self, key: int) -> bool:
         bits = get_binary_key(key, self.global_depth)
@@ -202,24 +188,33 @@ class ExtendibleHashTree:
             return leaf_node.bucket.search(key)
         return False
 
-
     def delete(self, key: int) -> bool:
         bits = get_binary_key(key, self.global_depth)
         leaf_node = self.descend_tree(bits, 0, self.root)
-        if leaf_node.is_leaf and leaf_node.bucket: 
-            return leaf_node.bucket.delete(key)
+        if leaf_node.is_leaf and leaf_node.bucket:
+            result = leaf_node.bucket.delete(key)
+            self.save()
+            return result
         return False
 
-    # -------------------------------------------------------------------------
-    # (Opcional) Rehashing / Contracción del árbol
-    # -------------------------------------------------------------------------
+    # (Opcional) Aquí se podrían agregar métodos para rehashing o contracción del árbol
+
+    def __repr__(self):
+        return f"ExtendibleHashTree(global_depth={self.global_depth}, root={self.root})"
+
+
 
 if __name__ == "__main__":
-    EHTree = ExtendibleHashTree(global_depth=GLOBAL_DEPTH, bucket_capacity=BUCKET_CAPACITY)
+    filename = "ehtree.pkl"
+    if os.path.exists(filename):
+        os.remove(filename)
+
+    EHTree = ExtendibleHashTree(global_depth=GLOBAL_DEPTH, bucket_capacity=BUCKET_CAPACITY, filename=filename)
 
     keys_to_insert = [5, 12, 7, 9, 20, 15, 3, 8, 27, 33, 42]
     for key in keys_to_insert:
         EHTree.insert(key)
+        print(f"Insertado: {key}")
 
     print("Buscar 7:", EHTree.search(7))
     print("Buscar 11:", EHTree.search(11))
