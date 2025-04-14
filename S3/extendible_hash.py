@@ -72,7 +72,7 @@ class ExtendibleHash:
         
         bstr = binary_hash(key)  # Cadena binaria de tamaño GLOBAL_DEPTH
         for d in range(1, self.global_depth + 1):
-            suffix = bstr[-d:]   # Tomar los últimos d bits
+            prefix = bstr[:d]
             if suffix in self.directory:
                 return self.directory[suffix]
         return None
@@ -91,8 +91,8 @@ class ExtendibleHash:
         old_local_depth = bucket.local_depth
         new_local_depth = old_local_depth + 1
         old_id = bucket.identifier
-        new_id_0 = old_id + "0"
-        new_id_1 = old_id + "1"
+        new_id_0 = "0" + old_id
+        new_id_1 = "1" + old_id
 
         # Crear dos nuevos buckets con la nueva profundidad local.
         bucket0 = Bucket(identifier=new_id_0, local_depth=new_local_depth, capacity=self.bucket_capacity)
@@ -107,7 +107,7 @@ class ExtendibleHash:
         # Redistribuir cada registro según su sufijo de longitud new_local_depth.
         for key in all_keys:
             bstr = binary_hash(key)
-            suffix = bstr[-new_local_depth:]
+            prefix = bstr[:new_local_depth]
             if suffix == new_id_0:
                 bucket0.insert(key)
             elif suffix == new_id_1:
