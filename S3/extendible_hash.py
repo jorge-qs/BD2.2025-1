@@ -3,9 +3,9 @@ import os
 
 GLOBAL_DEPTH = 8
 BUCKET_CAPACITY = 3
-HEADER_FORMAT = "ii"  
+HEADER_FORMAT = "ii"
 
-BUCKET_FORMAT = f"{GLOBAL_DEPTH}sii" + (f"{BUCKET_RECORD_SIZE}i" * BUCKET_CAPACITY) + "i"
+BUCKET_FORMAT = f"{GLOBAL_DEPTH}sii" + ("i" * BUCKET_CAPACITY) + "i"
 BUCKET_SIZE = struct.calcsize(BUCKET_FORMAT)
 HEADER_SIZE = struct.calcsize(HEADER_FORMAT)
 
@@ -25,9 +25,9 @@ class Bucket:
         self.identifier = identifier
         self.local_depth = local_depth
         self.capacity = capacity
-        self.records = []   
-        self.size = 0       
-        self.overflow = -1  
+        self.records = []
+        self.size = 0
+        self.overflow = -1
 
     def is_full(self):
         return self.size >= self.capacity
@@ -163,8 +163,8 @@ class ExtendibleHash:
 
     def update_directory_after_split(self, old_bucket, bucket0, bucket1):
         old_id = old_bucket.identifier
-        new_id_0 = "0" + old_id
-        new_id_1 = "1" + old_id
+        new_id_0 = old_id + "0"
+        new_id_1 = old_id + "1"
         if old_id in self.directory:
             del self.directory[old_id]
         pos0 = DiskStorage.append_bucket(bucket0)
@@ -176,8 +176,8 @@ class ExtendibleHash:
         old_local_depth = bucket.local_depth
         new_local_depth = old_local_depth + 1
         old_id = bucket.identifier
-        new_id_0 = "0" + old_id
-        new_id_1 = "1" + old_id
+        new_id_0 = old_id + "0"
+        new_id_1 = old_id + "1"
 
         bucket0 = Bucket(new_id_0, new_local_depth, BUCKET_CAPACITY)
         bucket1 = Bucket(new_id_1, new_local_depth, BUCKET_CAPACITY)
@@ -223,7 +223,7 @@ class ExtendibleHash:
                         current.overflow = overflow_pos
                         DiskStorage.write_bucket(current, current_pos)
                     current = DiskStorage.read_bucket(current.overflow)
-                    current_pos = current.overflow  
+                    current_pos = current.overflow
                 current.insert(key)
                 DiskStorage.write_bucket(current, current_pos)
 
